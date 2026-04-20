@@ -1,1 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tiro parabólico</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #dfefff;
+    }
 
+    h2 {
+      margin: 12px 0 6px;
+    }
+
+    #info {
+      font-size: 18px;
+      margin: 8px;
+      font-weight: bold;
+      line-height: 1.8;
+    }
+
+    #barraPotencia {
+      width: 340px;
+      height: 22px;
+      background: #ddd;
+      border: 2px solid #333;
+      margin: 10px auto;
+      position: relative;
+    }
+
+    #nivelPotencia {
+      height: 100%;
+      width: 0%;
+      background: #e74c3c;
+    }
+
+    canvas {
+      border: 2px solid #333;
+      background: linear-gradient(to top, #76c35d 0 25%, #a9d8ff 25% 100%);
+      display: block;
+      margin: 0 auto 20px;
+    }
+
+    #ayuda {
+      margin: 10px auto 20px;
+      max-width: 900px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Juego de tiro parabólico</h2>
+
+  <div id="info">
+    Ángulo: <span id="anguloTexto">45</span>° |
+    Potencia: <span id="potenciaTexto">0</span>
+  </div>
+
+  <div id="barraPotencia">
+    <div id="nivelPotencia"></div>
+  </div>
+
+  <div id="ayuda">
+    Flecha arriba: subir cañón |
+    Flecha abajo: bajar cañón |
+    Mantén ESPACIO para cargar potencia |
+    Suelta ESPACIO para disparar
+  </div>
+
+  <canvas id="lienzo" width="950" height="500"></canvas>
+
+  <script>
+    const canvas = document.getElementById("lienzo");
+    const ctx = canvas.getContext("2d");
+
+    const anguloTexto = document.getElementById("anguloTexto");
+    const potenciaTexto = document.getElementById("potenciaTexto");
+    const nivelPotencia = document.getElementById("nivelPotencia");
+
+    const sueloY = 390;
+    const gravedad = 30;
+
+    let angulo = 45;
+    let potencia = 0;
+    let cargando = false;
+    let animacionActiva = false;
+    let proyectil = null;
+    let mensaje = "";
+
+    const maxPotencia = 220;
+    const incrementoPotencia = 2.2;
+
+    const jugador = {
+      x: 90,
+      y: sueloY,
+      ancho: 70,
+      alto: 35
+    };
+
+    let enemigo = {
+      x: 760,
+      y: sueloY,
+      ancho: 70,
+      alto: 35
+    };
+
+    function crearEnemigo() {
+      enemigo.x = 620 + Math.random() * 220;
+    }
+
+    function actualizarPanel() {
+      anguloTexto.textContent = angulo;
+      potenciaTexto.textContent = Math.round(potencia);
+      nivelPotencia.style.width = (potencia / maxPotencia * 100) + "%";
+    }
+
+    function dibujarSuelo() {
+      ctx.fillStyle = "#5b8c3a";
+      ctx.fillRect(0, sueloY, canvas.width, canvas.height - sueloY);
+    }
+
+    function dibujarTanque(tanque, color, esJugador = false) {
+      ctx.fillStyle = color;
+
+      ctx.fillRect(tanque.x, tanque.y - tanque.alto, tanque.ancho, tanque.alto);
+
+      ctx.fillRect(tanque.x + 24, tanque.y - tanque.alto - 12, 22, 12);
+
+      ctx.beginPath();
+      ctx.arc(tanque.x + 14, tanque.y + 2, 9, 0, Math.PI * 2);
+      ctx.arc(tanque.x + 35, tanque.y + 2, 9, 0, Math.PI * 2);
+      ctx.arc(tanque.x + 56, tanque.y + 2, 9, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (esJugador) dibujarCanon();
+    }
+
+    function dibujarCanon() {
+      const baseX = jugador.x + 35;
+      const baseY = jugador.y - jugador.alto - 6;
+      const longitud = 48;
+      const rad = angulo * Math.PI / 180;
+
+      const puntaX = baseX + Math.cos(rad) * longitud;
+      const puntaY = baseY - Math.sin(rad) * longitud;
+
+      ctx.strokeStyle = "#111";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.lineTo(puntaX, puntaY);
+      ctx.stroke();
+    }
+
+    function dibujarProyectil() {
+      if (!proyectil) return;
+
+      ctx.fillStyle = "black";
+      ctx.beginPath();
+      ctx.arc(proyectil.x, proyectil.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function dibujarTexto() {
+      if (!mensaje) return;
+      ctx.fillStyle = "#111";
+      ctx.font = "22px Arial";
+      ctx.fillText(mensaje, 320, 40);
+    }
+
+    function dibujarExplosion(x, y) {
+      dibujar();
+
+      ctx.fillStyle = "orange";
+      ctx.beginPath();
+      ctx.arc(x, y, 28, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "yellow";
+      ctx.beginPath();
+      ctx.arc(x, y, 14, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function dibujar() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      dibujarSuelo();
+      dibujarTanque(jugador, "#2f6fdd", true);
+      dibujarTanque(enemigo, "#c0392b", false);
+      dibujarProyectil();
+      dibujarTexto();
+    }
+
+    function cambiarAngulo(delta) {
+      if (animacionActiva || cargando) return;
+
+      angulo += delta;
+      if (angulo < 5) angulo = 5;
+      if (angulo > 85) angulo = 85;
+
+      actualizarPanel();
+      dibujar();
+    }
+
+    function disparar() {
+      if (animacionActiva) return;
+
+      const rad = angulo * Math.PI / 180;
+      const baseX = jugador.x + 35;
+      const baseY = jugador.y - jugador.alto - 6;
+      const longitud = 48;
+
+      const inicioX = baseX + Math.cos(rad) * longitud;
+      const inicioY = baseY - Math.sin(rad) * longitud;
+
+      proyectil = {
+        x0: inicioX,
+        y0: inicioY,
+        x: inicioX,
+        y: inicioY,
+        vx: potencia * Math.cos(rad),
+        vy: -potencia * Math.sin(rad),
+        t: 0
+      };
+
+      mensaje = "";
+      animacionActiva = true;
+      animar();
+    }
+
+    function colisionConTanque(x, y, tanque) {
+      return (
+        x >= tanque.x &&
+        x <= tanque.x + tanque.ancho &&
+        y >= tanque.y - tanque.alto - 12 &&
+        y <= tanque.y + 10
+      );
+    }
+
+    function animar() {
+      if (!proyectil) return;
+
+      proyectil.t += 0.04;
+
+      proyectil.x = proyectil.x0 + proyectil.vx * proyectil.t;
+      proyectil.y = proyectil.y0 + proyectil.vy * proyectil.t + 0.5 * gravedad * proyectil.t * proyectil.t;
+
+      if (colisionConTanque(proyectil.x, proyectil.y, enemigo)) {
+        animacionActiva = false;
+        mensaje = "Impacto directo";
+        const ex = enemigo.x + enemigo.ancho / 2;
+        const ey = enemigo.y - enemigo.alto / 2;
+        proyectil = null;
+        dibujarExplosion(ex, ey);
+
+        setTimeout(() => {
+          crearEnemigo();
+          mensaje = "Nuevo tanque enemigo";
+          dibujar();
+        }, 700);
+        return;
+      }
+
+      if (proyectil.y >= sueloY) {
+        animacionActiva = false;
+
+        if (proyectil.x >= enemigo.x && proyectil.x <= enemigo.x + enemigo.ancho) {
+          mensaje = "Has acertado";
+          const ex = enemigo.x + enemigo.ancho / 2;
+          const ey = enemigo.y - enemigo.alto / 2;
+          proyectil = null;
+          dibujarExplosion(ex, ey);
+
+          setTimeout(() => {
+            crearEnemigo();
+            mensaje = "Nuevo tanque enemigo";
+            dibujar();
+          }, 700);
+          return;
+        } else {
+          mensaje = "No has acertado";
+        }
+
+        proyectil = null;
+        dibujar();
+        return;
+      }
+
+      if (proyectil.x < 0 || proyectil.x > canvas.width || proyectil.y > canvas.height) {
+        animacionActiva = false;
+        proyectil = null;
+        mensaje = "Disparo fuera de la zona";
+        dibujar();
+        return;
+      }
+
+      dibujar();
+      requestAnimationFrame(animar);
+    }
+
+    function cargarPotencia() {
+      if (!cargando) return;
+
+      potencia += incrementoPotencia;
+      if (potencia > maxPotencia) potencia = maxPotencia;
+
+      actualizarPanel();
+      dibujar();
+
+      requestAnimationFrame(cargarPotencia);
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "ArrowUp") {
+        e.preventDefault();
+        cambiarAngulo(2);
+      }
+
+      if (e.code === "ArrowDown") {
+        e.preventDefault();
+        cambiarAngulo(-2);
+      }
+
+      if (e.code === "Space" && !cargando && !animacionActiva) {
+        e.preventDefault();
+        cargando = true;
+        potencia = 0;
+        actualizarPanel();
+        cargarPotencia();
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      if (e.code === "Space" && cargando) {
+        e.preventDefault();
+        cargando = false;
+        disparar();
+        potencia = 0;
+        actualizarPanel();
+      }
+    });
+
+    crearEnemigo();
+    actualizarPanel();
+    dibujar();
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,1 @@
+# ed_minijuego_tiro_parab-lico
